@@ -82,13 +82,19 @@ export default function Home() {
     }
   };
 
-  const handleEventCreated = (newEvent: EventState) => {
+  const handleEventCreated = (
+    newEvent: EventState,
+    aiMetadata?: { provider: string; modelUsed: string; isLive: boolean }
+  ) => {
     const updatedEvents = [newEvent, ...events];
     setEvents(updatedEvents);
     setActiveEventId(newEvent.id);
     saveEventsToStorage(updatedEvents);
     saveActiveEventId(newEvent.id);
-    showToast(`Created & planned "${newEvent.title}" with Gemini 3.8 Flash!`);
+    const sourceLabel = aiMetadata?.isLive
+      ? `Live Google Gemini (${aiMetadata.modelUsed})`
+      : 'Deterministic Offline Synthesis';
+    showToast(`Created & planned "${newEvent.title}" via ${sourceLabel}!`);
   };
 
   const handleImportEvent = (importedEvent: EventState) => {

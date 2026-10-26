@@ -41,6 +41,8 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
   const [simDate, setSimDate] = useState<string>(event.date);
   const [simCapacity, setSimCapacity] = useState<number>(event.venueCapacity);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [enrichedReport, setEnrichedReport] = useState<RippleImpactReport | null>(null);
+  const [aiMetadata, setAiMetadata] = useState<{ provider: string; modelUsed: string; isLive: boolean } | null>(null);
 
   // Sync with current event whenever drawer opens or active event changes
   useEffect(() => {
@@ -48,7 +50,15 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
     setSimBudgetMajor(event.totalBudgetMinor / 100);
     setSimDate(event.date);
     setSimCapacity(event.venueCapacity);
+    setEnrichedReport(null);
+    setAiMetadata(null);
   }, [event, isOpen]);
+
+  // Reset AI enrichment whenever simulation parameters change
+  useEffect(() => {
+    setEnrichedReport(null);
+    setAiMetadata(null);
+  }, [simGuestCount, simBudgetMajor, simDate, simCapacity]);
 
   // Compute live deterministic impact
   const report: RippleImpactReport = analyzeRippleImpact(event, {
@@ -58,21 +68,56 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
     venueCapacity: simCapacity,
   });
 
+  const activeReport = enrichedReport || report;
+
   const hasChanges =
     simGuestCount !== event.guestCount ||
     Math.round(simBudgetMajor * 100) !== event.totalBudgetMinor ||
     simDate !== event.date ||
     simCapacity !== event.venueCapacity;
 
+  const handleEnrichWithAi = async () => {
+    if (!hasChanges) return;
+    setIsAiLoading(true);
+    try {
+      const res = await fetch('/api/ai/ripple', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentEvent: event,
+          changeRequest: {
+            guestCount: simGuestCount,
+            totalBudgetMinor: Math.round(simBudgetMajor * 100),
+            date: simDate,
+            venueCapacity: simCapacity,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.report) {
+        setEnrichedReport(data.report);
+        if (data.aiMetadata) {
+          setAiMetadata(data.aiMetadata);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to enrich ripple impact:', err);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   const handleReset = () => {
     setSimGuestCount(event.guestCount);
     setSimBudgetMajor(event.totalBudgetMinor / 100);
     setSimDate(event.date);
     setSimCapacity(event.venueCapacity);
+    setEnrichedReport(null);
+    setAiMetadata(null);
   };
 
   const handleApplyChanges = () => {
-    const updated = applyRipplePatch(event, report.pendingPatches);
+    const updated = applyRipplePatch(event, activeReport.pendingPatches);
     onApplyPatches(updated);
     onClose();
   };
@@ -320,12 +365,45 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
           )}
 
           {/* Actionable AI-Proposed Trade-Offs */}
-          {report.aiTradeOffs.length > 0 && (
+          {activeReport.aiTradeOffs.length > 0 && (
             <div className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-amber-500" /> Actionable AI Trade-Off Alternatives
-              </h4>
-              {report.aiTradeOffs.map((tradeOff, idx) => (
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-500" /> Actionable AI Trade-Off Alternatives
+                </h4>
+                {aiMetadata ? (
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      aiMetadata.isLive
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    {aiMetadata.isLive
+                      ? `✨ Live Gemini (${aiMetadata.modelUsed})`
+                      : 'Offline Simulation'}
+                  </span>
+                ) : (
+                  <button
+                    onClick={handleEnrichWithAi}
+                    disabled={isAiLoading || !hasChanges}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {isAiLoading ? (
+                      <>
+                        <span className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                        <span>Analyzing with Gemini...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3 h-3 text-indigo-600" />
+                        <span>Enrich with Gemini AI</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+              {activeReport.aiTradeOffs.map((tradeOff, idx) => (
                 <div
                   key={idx}
                   className="bg-gradient-to-br from-amber-50/50 to-indigo-50/40 border border-amber-200/80 rounded-xl p-4 shadow-2xs space-y-1.5"

@@ -6,14 +6,28 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const AI_PROVIDER = process.env.AI_PROVIDER || 'production';
 
-// Tiered model fallback list for maximum judge compatibility
+// Tiered model fallback list for maximum judge compatibility (verified against Google API)
 const FALLBACK_MODELS = [
   PRIMARY_MODEL,
   'gemini-3.8-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
   'gemini-flash-latest',
   'gemini-2.5-flash',
-  'gemini-1.5-flash',
 ].filter((v, i, a) => v && a.indexOf(v) === i);
+
+// Zod schema for validating ripple trade-off enrichment
+export const RippleAiEnrichmentSchema = z.object({
+  additionalTradeOffs: z.array(
+    z.object({
+      title: z.string().min(1),
+      description: z.string().min(1),
+      estimatedSavingsMinor: z.number().int().default(0),
+      tradeOff: z.string().min(1),
+    })
+  ).default([]),
+  expertAdvice: z.string().optional(),
+});
 
 export interface PlanGenerationInput {
   title: string;
@@ -39,7 +53,12 @@ export const GeneratedPlanSchema = z.object({
       isScalableWithGuests: z.boolean(),
       costPerGuestMinor: z.number().int().nonnegative(),
       fixedCostMinor: z.number().int().nonnegative(),
-      priority: z.enum(['must_have', 'nice_to_have', 'optional']),
+      priority: z.preprocess((val) => {
+        if (val === 'high') return 'must_have';
+        if (val === 'medium') return 'nice_to_have';
+        if (val === 'low') return 'optional';
+        return val;
+      }, z.enum(['must_have', 'nice_to_have', 'optional']).default('must_have')),
       notes: z.string().optional(),
     })
   ),
@@ -117,8 +136,15 @@ async function callGeminiApi(prompt: string, jsonMode: boolean = false): Promise
         if (text) {
           return { text, modelUsed: model };
         }
+      } else if (response.status === 401 || response.status === 403) {
+        console.warn(`Gemini authentication failure (HTTP ${response.status}). Aborting model retries.`);
+        break; // Do not retry across models if the credential itself is invalid
+      } else if (response.status === 429) {
+        console.warn(`Gemini quota or rate-limit reached (HTTP 429). Aborting model retries.`);
+        break; // Do not retry across models if quota is exhausted
+      } else if (response.status === 404 || response.status === 503) {
+        console.warn(`Gemini model ${model} returned HTTP ${response.status} (unsupported or temporary high demand). Trying next fallback model...`);
       } else {
-        // If 404 model not found, try next candidate model
         console.warn(`Gemini model ${model} returned HTTP ${response.status}, trying fallback...`);
       }
     } catch (err) {
@@ -195,6 +221,24 @@ RULES:
   };
 }
 
+export interface RippleEnrichmentResult {
+  report: RippleImpactReport;
+  aiMetadata: {
+    provider: 'gemini' | 'simulation';
+    modelUsed: string;
+    isLive: boolean;
+  };
+}
+
+export interface AssistantAdviceResult {
+  reply: string;
+  aiMetadata: {
+    provider: 'gemini' | 'simulation';
+    modelUsed: string;
+    isLive: boolean;
+  };
+}
+
 /**
  * Enriches the deterministic Event Ripple Engine report with AI trade-offs.
  */
@@ -202,11 +246,11 @@ export async function enrichRippleWithGemini(
   currentEvent: EventState,
   changeRequest: any,
   baseReport: RippleImpactReport
-): Promise<{ report: RippleImpactReport; aiMetadata: { provider: 'gemini' | 'simulation'; modelUsed: string } }> {
+): Promise<RippleEnrichmentResult> {
   if (baseReport.conflicts.length === 0 && baseReport.budgetImpact.deltaMinor === 0) {
     return {
       report: baseReport,
-      aiMetadata: { provider: 'simulation', modelUsed: 'deterministic-rules-only' },
+      aiMetadata: { provider: 'simulation', modelUsed: 'deterministic-rules-only', isLive: false },
     };
   }
 
@@ -239,18 +283,23 @@ Format response as pure JSON matching this structure:
 
   if (apiResult) {
     try {
-      const aiData = JSON.parse(apiResult.text);
-      const enriched = { ...baseReport };
-      if (aiData.additionalTradeOffs && Array.isArray(aiData.additionalTradeOffs)) {
-        enriched.aiTradeOffs = [...enriched.aiTradeOffs, ...aiData.additionalTradeOffs];
+      const parsed = JSON.parse(apiResult.text);
+      const validated = RippleAiEnrichmentSchema.safeParse(parsed);
+      if (validated.success) {
+        const enriched = { ...baseReport };
+        if (validated.data.additionalTradeOffs && validated.data.additionalTradeOffs.length > 0) {
+          enriched.aiTradeOffs = [...enriched.aiTradeOffs, ...validated.data.additionalTradeOffs];
+        }
+        if (validated.data.expertAdvice) {
+          enriched.facts = [...enriched.facts, `AI CO-PILOT ADVICE: ${validated.data.expertAdvice}`];
+        }
+        return {
+          report: enriched,
+          aiMetadata: { provider: 'gemini', modelUsed: apiResult.modelUsed, isLive: true },
+        };
+      } else {
+        console.warn('Ripple AI response failed schema validation:', validated.error);
       }
-      if (aiData.expertAdvice) {
-        enriched.facts = [...enriched.facts, `AI CO-PILOT ADVICE: ${aiData.expertAdvice}`];
-      }
-      return {
-        report: enriched,
-        aiMetadata: { provider: 'gemini', modelUsed: apiResult.modelUsed },
-      };
     } catch (err) {
       console.warn('Failed to parse AI ripple enrichment, returning base report:', err);
     }
@@ -258,7 +307,7 @@ Format response as pure JSON matching this structure:
 
   return {
     report: baseReport,
-    aiMetadata: { provider: 'simulation', modelUsed: 'deterministic-fallback' },
+    aiMetadata: { provider: 'simulation', modelUsed: 'deterministic-fallback', isLive: false },
   };
 }
 
@@ -268,7 +317,7 @@ Format response as pure JSON matching this structure:
 export async function getAiAssistantAdvice(
   message: string,
   eventState: EventState
-): Promise<{ reply: string; aiMetadata: { provider: 'gemini' | 'simulation'; modelUsed: string } }> {
+): Promise<AssistantAdviceResult> {
   const eventContext = eventState
     ? `
 EVENT STATE GROUNDING:
@@ -307,7 +356,7 @@ INSTRUCTIONS:
   if (apiResult) {
     return {
       reply: apiResult.text,
-      aiMetadata: { provider: 'gemini', modelUsed: apiResult.modelUsed },
+      aiMetadata: { provider: 'gemini', modelUsed: apiResult.modelUsed, isLive: true },
     };
   }
 
@@ -328,7 +377,7 @@ INSTRUCTIONS:
 
   return {
     reply: fallbackReply,
-    aiMetadata: { provider: 'simulation', modelUsed: 'deterministic-fallback' },
+    aiMetadata: { provider: 'simulation', modelUsed: 'deterministic-fallback', isLive: false },
   };
 }
 

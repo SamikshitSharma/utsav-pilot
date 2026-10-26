@@ -22,6 +22,11 @@ interface AiAssistantModalProps {
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  metadata?: {
+    provider: 'gemini' | 'simulation';
+    modelUsed: string;
+    isLive: boolean;
+  };
 }
 
 export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
@@ -33,6 +38,11 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
     {
       role: 'assistant',
       content: `Namaste! I am your **UtsavPilot AI Co-Pilot**. I am grounded in your active plan for **${event.title}** (${event.guestCount} guests, ₹${(event.totalBudgetMinor / 100).toLocaleString('en-IN')} budget in ${event.location}). How can I assist you with cost-saving, theme ideas, or vendor questions today?`,
+      metadata: {
+        provider: 'gemini',
+        modelUsed: 'gemini-3.5-flash',
+        isLive: true,
+      },
     },
   ]);
   const [inputQuery, setInputQuery] = useState('');
@@ -65,7 +75,14 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
 
       const data = await res.json();
       if (data.reply) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: data.reply,
+            metadata: data.aiMetadata,
+          },
+        ]);
       } else {
         setMessages((prev) => [
           ...prev,
@@ -138,6 +155,19 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
                 }`}
               >
                 {msg.content}
+                {msg.role === 'assistant' && msg.metadata && (
+                  <div className="mt-2 pt-1.5 border-t border-slate-200/60 flex items-center gap-1.5 text-[10px] font-mono">
+                    {msg.metadata.isLive ? (
+                      <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded flex items-center gap-1">
+                        ✨ Live {msg.metadata.modelUsed}
+                      </span>
+                    ) : (
+                      <span className="bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded">
+                        Offline Simulation
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}

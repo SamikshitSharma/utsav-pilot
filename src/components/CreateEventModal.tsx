@@ -23,7 +23,10 @@ import {
 interface CreateEventModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onEventCreated: (event: EventState) => void;
+  onEventCreated: (
+    event: EventState,
+    aiMetadata?: { provider: string; modelUsed: string; isLive: boolean }
+  ) => void;
 }
 
 export const CreateEventModal: React.FC<CreateEventModalProps> = ({
@@ -169,7 +172,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         })),
       };
 
-      onEventCreated(newEvent);
+      onEventCreated(newEvent, data.aiMetadata);
       onClose();
     } catch (err: any) {
       console.error('Error in plan generation:', err);
