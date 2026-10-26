@@ -3,15 +3,15 @@ import { EventType, BudgetItem, Task, Vendor, IdeaRecommendation, EventState, Ri
 
 // Never hardcode API keys in source code! Must be loaded via environment variables.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 const AI_PROVIDER = process.env.AI_PROVIDER || 'production';
 
 // Tiered model fallback list for maximum judge compatibility (verified against Google API)
 const FALLBACK_MODELS = [
   PRIMARY_MODEL,
-  'gemini-3.8-flash',
   'gemini-3.5-flash',
   'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
   'gemini-flash-latest',
   'gemini-2.5-flash',
 ].filter((v, i, a) => v && a.indexOf(v) === i);

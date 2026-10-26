@@ -3,6 +3,8 @@ import { EventState } from '@/types/event';
 import { analyzeRippleImpact, RippleChangeRequest } from '@/lib/ripple-engine';
 import { enrichRippleWithGemini } from '@/lib/gemini';
 
+export const maxDuration = 30;
+
 export async function POST(req: NextRequest) {
   try {
     const {

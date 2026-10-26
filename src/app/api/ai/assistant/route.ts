@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { EventState } from '@/types/event';
 import { getAiAssistantAdvice } from '@/lib/gemini';
 
+export const maxDuration = 30;
+
 export async function POST(req: NextRequest) {
   try {
     const {
