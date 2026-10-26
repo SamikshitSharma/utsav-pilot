@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   GeneratedPlanSchema,
   RippleAiEnrichmentSchema,
+  normalizePlanCandidate,
   enrichRippleWithGemini,
   getAiAssistantAdvice,
 } from '../src/lib/gemini';
@@ -44,6 +45,57 @@ describe('AI Provenance, Schema Hardening & Simulation Fallback', () => {
     vendors: [],
     ideas: [],
   };
+
+  describe('normalizePlanCandidate wrapper unpacking & resilient typing', () => {
+    it('unpacks nested { plan: { ... } } wrapper returned by LLM and normalizes fields', () => {
+      const nestedLlmResponse = {
+        plan: {
+          budgetItems: [
+            {
+              item: 'Live Dosa Station',
+              category: 'Catering',
+              costMinor: 2500000,
+              scalable: true,
+              costPerGuestMinor: 50000,
+              priority: 'must_have',
+            },
+          ],
+          tasks: ['Book caterer 30 days prior', 'Finalize food token distribution'],
+          vendors: [
+            {
+              vendorName: 'Annapurna Caterers',
+              category: 'Catering',
+              quote: 2500000,
+              inclusions: 'Live cook, plates, napkins',
+            },
+          ],
+          ideas: [
+            {
+              title: 'Live Cooking Theater',
+              description: 'Cook dosas on open flat-top tawa',
+              why: 'High guest engagement',
+              tradeOff: 'Requires smoke exhaust setup',
+              savingsMinor: 0,
+              category: 'experience',
+            },
+          ],
+          summary: 'High engagement South Indian food setup',
+        },
+      };
+
+      const normalized = normalizePlanCandidate(nestedLlmResponse);
+      const parsed = GeneratedPlanSchema.safeParse(normalized);
+      expect(parsed.success).toBe(true);
+      if (parsed.success) {
+        expect(parsed.data.budgetItems[0].name).toBe('Live Dosa Station');
+        expect(parsed.data.budgetItems[0].isScalableWithGuests).toBe(true);
+        expect(parsed.data.tasks).toHaveLength(2);
+        expect(parsed.data.tasks[0].title).toBe('Book caterer 30 days prior');
+        expect(parsed.data.vendors[0].name).toContain('[Sample Data]');
+        expect(parsed.data.ideas[0].category).toBe('cost_saving');
+      }
+    });
+  });
 
   describe('GeneratedPlanSchema Priority Preprocessing', () => {
     it('successfully maps LLM priorities "high", "medium", "low" to schema enums', () => {

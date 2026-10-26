@@ -156,6 +156,155 @@ async function callGeminiApi(prompt: string, jsonMode: boolean = false): Promise
 }
 
 /**
+ * Normalizes raw model output to handle root wrappers and structural variations
+ */
+export function normalizePlanCandidate(raw: any): any {
+  if (!raw || typeof raw !== 'object') return raw;
+  const obj = raw.plan || raw.eventPlan || raw.event_plan || raw.data || raw;
+  if (!obj || typeof obj !== 'object') return raw;
+
+  // 1. Normalize budget items
+  const rawBudget = Array.isArray(obj.budgetItems) ? obj.budgetItems : obj.budget || obj.items;
+  const budgetItems = Array.isArray(rawBudget)
+    ? rawBudget.map((b: any) => {
+        if (typeof b !== 'object' || !b) return b;
+        return {
+          category: b.category || 'General',
+          name: b.name || b.title || b.item || 'Budget Item',
+          estimatedMinor:
+            typeof b.estimatedMinor === 'number'
+              ? Math.round(b.estimatedMinor)
+              : Math.round(
+                  Number(
+                    b.costMinor ||
+                      b.estimatedCostMinor ||
+                      b.estimatedAmountMinor ||
+                      b.amountMinor ||
+                      (b.estimated ? b.estimated * 100 : 1000000)
+                  )
+                ),
+          isScalableWithGuests: Boolean(b.isScalableWithGuests ?? b.scalable ?? false),
+          costPerGuestMinor: typeof b.costPerGuestMinor === 'number' ? Math.round(b.costPerGuestMinor) : 0,
+          fixedCostMinor:
+            typeof b.fixedCostMinor === 'number'
+              ? Math.round(b.fixedCostMinor)
+              : typeof b.estimatedMinor === 'number'
+              ? Math.round(b.estimatedMinor)
+              : 0,
+          priority:
+            b.priority === 'high' || b.priority === 'must_have'
+              ? 'must_have'
+              : b.priority === 'low' || b.priority === 'optional'
+              ? 'optional'
+              : 'nice_to_have',
+          notes: b.notes || b.description || '',
+        };
+      })
+    : undefined;
+
+  // 2. Normalize tasks
+  const rawTasks = Array.isArray(obj.tasks) ? obj.tasks : obj.timeline || obj.checklist;
+  const tasks = Array.isArray(rawTasks)
+    ? rawTasks.map((t: any, idx: number) => {
+        if (typeof t === 'string') {
+          return {
+            title: t,
+            category: 'Coordination',
+            dueOffsetDays: -(idx + 1) * 7,
+            priority: 'medium' as const,
+            owner: 'Lead Organizer',
+            notes: '',
+          };
+        }
+        if (typeof t !== 'object' || !t) return t;
+        let priority: 'high' | 'medium' | 'low' = 'medium';
+        const pStr = String(t.priority || '').toLowerCase();
+        if (pStr.includes('high') || pStr.includes('must') || pStr.includes('urgent')) priority = 'high';
+        else if (pStr.includes('low') || pStr.includes('opt')) priority = 'low';
+
+        return {
+          title: t.title || t.task || t.name || `Task ${idx + 1}`,
+          category: t.category || 'Logistics',
+          dueOffsetDays:
+            typeof t.dueOffsetDays === 'number'
+              ? Math.round(t.dueOffsetDays)
+              : typeof t.dueOffset === 'number'
+              ? Math.round(t.dueOffset)
+              : -15,
+          priority,
+          owner: t.owner || t.assignee || 'Lead Organizer',
+          notes: t.notes || t.description || '',
+        };
+      })
+    : undefined;
+
+  // 3. Normalize vendors
+  const rawVendors = Array.isArray(obj.vendors) ? obj.vendors : obj.vendorList || obj.sampleVendors;
+  const vendors = Array.isArray(rawVendors)
+    ? rawVendors.map((v: any, idx: number) => {
+        if (typeof v !== 'object' || !v) return v;
+        let name = v.name || v.vendorName || `Sample Vendor ${idx + 1}`;
+        if (!name.includes('[Sample Data]')) {
+          name = `${name} [Sample Data]`;
+        }
+        const inclusions = Array.isArray(v.inclusions)
+          ? v.inclusions
+          : typeof v.inclusions === 'string'
+          ? [v.inclusions]
+          : ['Standard service'];
+        return {
+          category: v.category || 'Service',
+          name,
+          quoteMinor:
+            typeof v.quoteMinor === 'number'
+              ? Math.round(v.quoteMinor)
+              : Math.round(Number(v.quote || v.cost || 5000000)),
+          inclusions,
+          notes: v.notes || '',
+        };
+      })
+    : undefined;
+
+  // 4. Normalize ideas
+  const validIdeaCategories = ['theme', 'decor', 'menu', 'entertainment', 'activity', 'cost_saving'];
+  const rawIdeas = Array.isArray(obj.ideas) ? obj.ideas : obj.recommendations;
+  const ideas = Array.isArray(rawIdeas)
+    ? rawIdeas.map((idea: any) => {
+        if (typeof idea !== 'object' || !idea) return idea;
+        let category: any = 'cost_saving';
+        if (validIdeaCategories.includes(idea.category)) {
+          category = idea.category;
+        }
+        return {
+          category,
+          title: idea.title || 'Creative Suggestion',
+          description: idea.description || idea.summary || '',
+          reasoning: idea.reasoning || idea.why || '',
+          tradeOffs: idea.tradeOffs || idea.tradeOff || 'Requires advance coordination',
+          estimatedSavingsOrCostMinor:
+            typeof idea.estimatedSavingsOrCostMinor === 'number'
+              ? Math.round(idea.estimatedSavingsOrCostMinor)
+              : typeof idea.savingsMinor === 'number'
+              ? Math.round(idea.savingsMinor)
+              : 0,
+        };
+      })
+    : undefined;
+
+  return {
+    budgetItems,
+    tasks,
+    vendors,
+    ideas,
+    reasoningSummary:
+      obj.reasoningSummary ||
+      obj.summary ||
+      obj.reasoning ||
+      'AI tailored celebration plan optimized for requested constraints.',
+  };
+}
+
+/**
  * Generates an event plan via Gemini with strict Zod validation, falling back
  * to deterministic synthesis with transparent provenance metadata.
  */
@@ -187,13 +336,13 @@ RULES:
 5. Provide 3 to 4 personalized, creative, cost-saving or high-impact ideas with explicit reasoning and trade-offs.
 6. Return purely valid JSON strictly matching the required schema.
 `;
-
   const apiResult = await callGeminiApi(prompt, true);
 
   if (apiResult) {
     try {
       const parsed = JSON.parse(apiResult.text);
-      const validated = GeneratedPlanSchema.safeParse(parsed);
+      const normalized = normalizePlanCandidate(parsed);
+      const validated = GeneratedPlanSchema.safeParse(normalized);
       if (validated.success) {
         return {
           plan: validated.data,
