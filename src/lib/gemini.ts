@@ -116,7 +116,7 @@ async function callGeminiApi(prompt: string, jsonMode: boolean = false): Promise
   // Attempt at most 2 healthy models to remain safely within Vercel's execution window
   for (const model of FALLBACK_MODELS.slice(0, 2)) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9500);
+    const timeout = setTimeout(() => controller.abort(), 14000);
 
     try {
       const response = await fetch(
@@ -340,12 +340,19 @@ CONSTRAINTS & DETAILS:
 - Natural Language Brief: "${input.brief}"
 
 RULES:
-1. Provide 6 to 8 realistic budget items with integer minor units (paise). Sum of estimatedMinor must be around 85-90% of total budget to leave room for contingency.
+1. Provide 4 to 6 realistic budget items with integer minor units (paise). Sum of estimatedMinor must be around 85-90% of total budget to leave room for contingency.
 2. Flag items that scale per-guest (like food, favors, chair hire) with isScalableWithGuests = true and provide accurate costPerGuestMinor.
-3. Provide 6 to 8 chronologically sound tasks with dueOffsetDays relative to event date (e.g. -60 for 60 days before, -1 for day before).
-4. Provide 3 to 4 sample vendor specifications with realistic category quotes and clear inclusions. All sample vendors must have "[Sample Data]" in their name.
-5. Provide 3 to 4 personalized, creative, cost-saving or high-impact ideas with explicit reasoning and trade-offs.
-6. Return purely valid JSON strictly matching the required schema.
+3. Provide 4 to 6 chronologically sound tasks with dueOffsetDays relative to event date (e.g. -60 for 60 days before, -1 for day before).
+4. Provide 2 to 3 sample vendor specifications with realistic category quotes and clear inclusions. All sample vendors must have "[Sample Data]" in their name.
+5. Provide 2 to 3 personalized, creative, cost-saving or high-impact ideas with explicit reasoning and trade-offs.
+6. Return purely valid JSON strictly matching this structure:
+{
+  "budgetItems": [{"category": "...", "name": "...", "estimatedMinor": 0, "isScalableWithGuests": false, "costPerGuestMinor": 0, "fixedCostMinor": 0, "priority": "must_have"}],
+  "tasks": [{"title": "...", "category": "...", "dueOffsetDays": -30, "priority": "high", "owner": "..."}],
+  "vendors": [{"category": "...", "name": "... [Sample Data]", "quoteMinor": 0, "inclusions": ["..."]}],
+  "ideas": [{"category": "cost_saving", "title": "...", "description": "...", "reasoning": "...", "tradeOffs": "...", "estimatedSavingsOrCostMinor": 0}],
+  "reasoningSummary": "..."
+}
 `;
   const apiResult = await callGeminiApi(prompt, true);
 
