@@ -257,13 +257,17 @@ describe('AI Provenance, Schema Hardening & Simulation Fallback', () => {
         conflicts: [],
         facts: ['No changes made to event.'],
         budgetImpact: {
-          originalBudgetMinor: 50000000,
-          newEstimatedSpendMinor: 15000000,
+          previousEstimatedMinor: 50000000,
+          newEstimatedMinor: 15000000,
           deltaMinor: 0,
+          overrunMinor: 0,
           affectedItems: [],
         },
         taskImpact: {
           affectedTasks: [],
+        },
+        vendorImpact: {
+          recommendations: [],
         },
         aiTradeOffs: [],
         pendingPatches: {},

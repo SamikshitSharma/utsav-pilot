@@ -150,7 +150,9 @@ export const GEMINI_API_TIMEOUT_MS = 14000;
  * and strict timeout to prevent serverless function gateway timeouts.
  */
 async function callGeminiApi(prompt: string, jsonMode: boolean = false): Promise<{ text: string; modelUsed: string } | null> {
-  if (!GEMINI_API_KEY || AI_PROVIDER === 'simulation') {
+  const apiKey = process.env.GEMINI_API_KEY || GEMINI_API_KEY;
+  const provider = process.env.AI_PROVIDER || AI_PROVIDER;
+  if (!apiKey || provider === 'simulation') {
     return null;
   }
 
@@ -161,7 +163,7 @@ async function callGeminiApi(prompt: string, jsonMode: boolean = false): Promise
 
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -137,7 +137,7 @@ describe('Event Ripple Engine', () => {
       estimatedMinor: 5000000,
       confirmedMinor: 5000000,
       paidMinor: 5000000,
-      source: 'manual' as const,
+      source: 'user_defined' as const,
       isScalableWithGuests: false,
       costPerGuestMinor: 0,
       fixedCostMinor: 5000000,

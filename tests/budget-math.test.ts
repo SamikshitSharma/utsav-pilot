@@ -156,7 +156,7 @@ describe('Budget Math & Minor Currency Units', () => {
       estimatedMinor: 100000, // ₹1,000
       confirmedMinor: 100000,
       paidMinor: 0,
-      source: 'manual',
+      source: 'user_defined',
       isScalableWithGuests: false,
       costPerGuestMinor: 0,
       fixedCostMinor: 100000,
