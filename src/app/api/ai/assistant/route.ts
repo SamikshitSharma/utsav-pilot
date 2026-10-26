@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { message, eventState } = guard.data;
-    const { reply, aiMetadata } = await getAiAssistantAdvice(message, eventState as any);
+    const { reply, aiMetadata } = await getAiAssistantAdvice(message, eventState);
 
     return NextResponse.json({
       success: true,

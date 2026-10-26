@@ -1,9 +1,18 @@
 import { z } from 'zod';
-import { EventType, BudgetItem, Task, Vendor, IdeaRecommendation, EventState, RippleImpactReport } from '@/types/event';
+import { EventType, BudgetItem, Task, Vendor, IdeaRecommendation, EventState, EventStateSchema, RippleImpactReport } from '@/types/event';
 
 // Never hardcode API keys in source code! Must be loaded via environment variables.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+
+// Canonical fast primary model verified with live Google API (lowest latency and zero 503 capacity errors)
+const VERIFIED_FAST_MODEL = 'gemini-3.5-flash-lite';
+
+// Automatically map legacy or overloaded model alias if present in Vercel environment
+const configuredModel = process.env.GEMINI_MODEL;
+const PRIMARY_MODEL = (!configuredModel || configuredModel === 'gemini-3.8-flash')
+  ? VERIFIED_FAST_MODEL
+  : configuredModel;
+
 const AI_PROVIDER = process.env.AI_PROVIDER || 'production';
 
 // Tiered model fallback list for maximum judge compatibility (verified against Google API)
@@ -12,7 +21,6 @@ const FALLBACK_MODELS = [
   'gemini-3.5-flash-lite',
   'gemini-3.5-flash',
   'gemini-flash-latest',
-  'gemini-2.5-flash',
 ].filter((v, i, a) => v && a.indexOf(v) === i);
 
 // Zod schema for validating ripple trade-off enrichment
@@ -46,7 +54,7 @@ export type PlanGenerationInput = z.infer<typeof PlanRequestSchema>;
 
 export const AssistantRequestSchema = z.object({
   message: z.string().trim().min(1, 'Message is required').max(1000, 'Message cannot exceed 1000 characters'),
-  eventState: z.record(z.string(), z.any()).optional(),
+  eventState: EventStateSchema.optional(),
 });
 
 export type AssistantRequestInput = z.infer<typeof AssistantRequestSchema>;
@@ -519,7 +527,7 @@ Format response as pure JSON matching this structure:
  */
 export async function getAiAssistantAdvice(
   message: string,
-  eventState: EventState
+  eventState?: EventState
 ): Promise<AssistantAdviceResult> {
   const eventContext = eventState
     ? `

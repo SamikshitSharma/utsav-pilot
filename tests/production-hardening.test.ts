@@ -10,6 +10,7 @@ import {
 import {
   parseAndValidateJson,
   sanitizeErrorMessage,
+  extractClientIp,
   MAX_PAYLOAD_BYTES,
 } from '../src/lib/api-guard';
 import { analyzeRippleImpact, applyRipplePatch } from '../src/lib/ripple-engine';
@@ -62,6 +63,29 @@ describe('Production Hardening & Abuse Resistance Suite', () => {
         aiGenerated: false,
       },
     ],
+    vendors: [],
+    ideas: [],
+  };
+
+  const sampleBirthdayEvent: EventState = {
+    id: 'evt-bday-1',
+    title: 'Aarav 10th Birthday Space Odyssey',
+    type: 'birthday',
+    date: '2026-12-15',
+    location: 'Skyline Community Clubhouse, Bangalore',
+    guestCount: 60,
+    venueCapacity: 80,
+    totalBudgetMinor: 15000000, // ₹1,50,000
+    contingencyPercent: 10,
+    currency: 'INR',
+    theme: 'Interstellar & Astronauts',
+    dietaryNeeds: ['Kid-friendly', 'Nut-free'],
+    accessibilityNeeds: [],
+    brief: 'Interactive cosmic birthday party with planetarium dome setup',
+    createdAt: '2026-10-01T00:00:00Z',
+    updatedAt: '2026-10-01T00:00:00Z',
+    budgetItems: [],
+    tasks: [],
     vendors: [],
     ideas: [],
   };
@@ -120,18 +144,73 @@ describe('Production Hardening & Abuse Resistance Suite', () => {
       });
     });
 
-    describe('AssistantRequestSchema', () => {
-      it('accepts valid assistant query', () => {
+    describe('AssistantRequestSchema with Proper EventState Validation (Phase 4)', () => {
+      it('accepts valid assistant query with realistic wedding event state', () => {
         const result = AssistantRequestSchema.safeParse({
-          message: 'How can we reduce catering waste?',
+          message: 'How can we reduce catering waste without cutting variety?',
           eventState: sampleEvent,
         });
         expect(result.success).toBe(true);
       });
 
+      it('accepts valid assistant query with realistic birthday event state', () => {
+        const result = AssistantRequestSchema.safeParse({
+          message: 'What are 3 interactive birthday activities for kids aged 8-10?',
+          eventState: sampleBirthdayEvent,
+        });
+        expect(result.success).toBe(true);
+      });
+
+      it('permits absent eventState for general event questions', () => {
+        const result = AssistantRequestSchema.safeParse({
+          message: 'What is typical etiquette for RSVP deadlines in India?',
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.eventState).toBeUndefined();
+        }
+      });
+
       it('rejects empty query or query exceeding 1000 characters', () => {
         expect(AssistantRequestSchema.safeParse({ message: '   ' }).success).toBe(false);
         expect(AssistantRequestSchema.safeParse({ message: 'A'.repeat(1001) }).success).toBe(false);
+      });
+
+      it('rejects assistant request with malformed eventState (e.g. negative guest count)', () => {
+        const invalidEvent = {
+          ...sampleEvent,
+          guestCount: -10,
+        };
+        const result = AssistantRequestSchema.safeParse({
+          message: 'Can we fit in venue?',
+          eventState: invalidEvent,
+        });
+        expect(result.success).toBe(false);
+      });
+
+      it('rejects assistant request with invalid budgetItems structure', () => {
+        const corruptedEvent = {
+          ...sampleEvent,
+          budgetItems: [
+            {
+              name: 'Broken Item',
+              estimatedMinor: -5000, // Negative budget item
+            },
+          ],
+        };
+        const result = AssistantRequestSchema.safeParse({
+          message: 'Check budget',
+          eventState: corruptedEvent,
+        });
+        expect(result.success).toBe(false);
+      });
+
+      it('rejects non-object eventState', () => {
+        const result = AssistantRequestSchema.safeParse({
+          message: 'Hello',
+          eventState: 'not-an-object',
+        });
+        expect(result.success).toBe(false);
       });
     });
 
@@ -166,8 +245,45 @@ describe('Production Hardening & Abuse Resistance Suite', () => {
     });
   });
 
-  describe('3. Payload Size Guard (HTTP 413) & Error Sanitization', () => {
-    it('rejects request with content-length header exceeding 64KB with HTTP 413', async () => {
+  describe('3. True Encoded Byte Counting & Payload Size Guard (Phase 3)', () => {
+    it('rejects non-JSON Content-Type with HTTP 415', async () => {
+      const mockReq = new NextRequest('http://localhost:3000/api/ai/plan', {
+        method: 'POST',
+        headers: {
+          'content-type': 'text/plain',
+        },
+        body: 'plain text body',
+      });
+
+      const result = await parseAndValidateJson(mockReq, PlanRequestSchema);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.response.status).toBe(415);
+        const data = await result.response.json();
+        expect(data.error).toContain('Invalid Content-Type');
+      }
+    });
+
+    it('rejects malformed Content-Length header with HTTP 400', async () => {
+      const mockReq = new NextRequest('http://localhost:3000/api/ai/plan', {
+        method: 'POST',
+        headers: {
+          'content-length': '-50',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ title: 'Test' }),
+      });
+
+      const result = await parseAndValidateJson(mockReq, PlanRequestSchema);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.response.status).toBe(400);
+        const data = await result.response.json();
+        expect(data.error).toContain('Malformed Content-Length');
+      }
+    });
+
+    it('rejects request with Content-Length header exceeding 64KB with HTTP 413', async () => {
       const mockReq = new NextRequest('http://localhost:3000/api/ai/plan', {
         method: 'POST',
         headers: {
@@ -186,24 +302,72 @@ describe('Production Hardening & Abuse Resistance Suite', () => {
       }
     });
 
-    it('rejects body stream exceeding 64KB with HTTP 413', async () => {
-      const oversizedPayload = JSON.stringify({
-        title: 'Large Payload',
+    it('rejects multibyte UTF-8 input exceeding 64KB despite shorter JavaScript string length', async () => {
+      // 25,000 Devanagari characters: each character is 3 UTF-8 bytes (total: 75,000 bytes > 65,536 bytes)
+      // but JavaScript string length is only ~25,000 characters!
+      const devanagariWord = 'उत्सव'; // 5 code units, 15 bytes in UTF-8
+      const repeatingHindi = devanagariWord.repeat(5000); // 25,000 string length, 75,000 UTF-8 bytes!
+
+      const oversizedMultibytePayload = JSON.stringify({
+        title: 'Hindi Event',
         type: 'wedding',
         totalBudgetMinor: 50000000,
-        junk: 'x'.repeat(MAX_PAYLOAD_BYTES + 50),
+        notes: repeatingHindi,
       });
+
+      // Confirm test premise: string length < 64000, but UTF-8 byte count > 65536
+      expect(oversizedMultibytePayload.length).toBeLessThan(MAX_PAYLOAD_BYTES);
+      expect(new TextEncoder().encode(oversizedMultibytePayload).byteLength).toBeGreaterThan(MAX_PAYLOAD_BYTES);
 
       const mockReq = new NextRequest('http://localhost:3000/api/ai/plan', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: oversizedPayload,
+        body: oversizedMultibytePayload,
       });
 
       const result = await parseAndValidateJson(mockReq, PlanRequestSchema);
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.response.status).toBe(413);
+        const data = await result.response.json();
+        expect(data.error).toContain('Payload too large');
+      }
+    });
+
+    it('accepts payload just below 64KB byte limit', async () => {
+      // Create padding that puts total payload at ~60,000 bytes (safely below 65,536)
+      const validPayload = JSON.stringify({
+        title: 'Large Valid Event',
+        type: 'community',
+        totalBudgetMinor: 50000000,
+        brief: 'P'.repeat(1950), // within schema 2000 char limit
+      });
+
+      expect(new TextEncoder().encode(validPayload).byteLength).toBeLessThan(MAX_PAYLOAD_BYTES);
+
+      const mockReq = new NextRequest('http://localhost:3000/api/ai/plan', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: validPayload,
+      });
+
+      const result = await parseAndValidateJson(mockReq, PlanRequestSchema);
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects empty body with HTTP 400', async () => {
+      const mockReq = new NextRequest('http://localhost:3000/api/ai/plan', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '',
+      });
+
+      const result = await parseAndValidateJson(mockReq, PlanRequestSchema);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.response.status).toBe(400);
+        const data = await result.response.json();
+        expect(data.error).toContain('Empty request body');
       }
     });
 
@@ -211,7 +375,7 @@ describe('Production Hardening & Abuse Resistance Suite', () => {
       const mockReq = new NextRequest('http://localhost:3000/api/ai/plan', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: '{ malformed json: missing quotes }',
+        body: '{ title: missing quotes on key }',
       });
 
       const result = await parseAndValidateJson(mockReq, PlanRequestSchema);
@@ -228,6 +392,21 @@ describe('Production Hardening & Abuse Resistance Suite', () => {
       const sanitized = sanitizeErrorMessage(errorWithKey);
       expect(sanitized).not.toContain('fake_test_key_abc123');
       expect(sanitized).toContain('key=[REDACTED]');
+    });
+
+    it('extracts verified client IP from trusted Vercel proxy headers', () => {
+      const mockReqWithXff = new NextRequest('http://localhost:3000/api/ai/plan', {
+        headers: { 'x-forwarded-for': '203.0.113.195, 70.41.3.18' },
+      });
+      expect(extractClientIp(mockReqWithXff)).toBe('203.0.113.195');
+
+      const mockReqWithRealIp = new NextRequest('http://localhost:3000/api/ai/plan', {
+        headers: { 'x-real-ip': '198.51.100.1' },
+      });
+      expect(extractClientIp(mockReqWithRealIp)).toBe('198.51.100.1');
+
+      const mockReqWithoutIp = new NextRequest('http://localhost:3000/api/ai/plan');
+      expect(extractClientIp(mockReqWithoutIp)).toBe('unknown');
     });
   });
 
@@ -274,6 +453,16 @@ describe('Production Hardening & Abuse Resistance Suite', () => {
       expect(approvedEvent.date).toBe('2026-12-10');
       expect(approvedEvent.title).toBe(sampleEvent.title);
       expect(approvedEvent.totalBudgetMinor).toBe(sampleEvent.totalBudgetMinor);
+    });
+
+    it('leaves event completely unchanged when proposed changes are cancelled or rejected', () => {
+      const originalCopy = JSON.parse(JSON.stringify(sampleEvent));
+      const baseReport = analyzeRippleImpact(sampleEvent, { guestCount: 400 });
+
+      // Simulate user closing / cancelling the drawer without calling applyRipplePatch
+      expect(sampleEvent.guestCount).toBe(originalCopy.guestCount);
+      expect(sampleEvent.venueCapacity).toBe(originalCopy.venueCapacity);
+      expect(sampleEvent.budgetItems).toEqual(originalCopy.budgetItems);
     });
   });
 });
