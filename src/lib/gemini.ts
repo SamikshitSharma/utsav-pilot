@@ -28,19 +28,50 @@ export const RippleAiEnrichmentSchema = z.object({
   expertAdvice: z.string().optional(),
 });
 
-export interface PlanGenerationInput {
-  title: string;
-  type: EventType;
-  date: string;
-  location: string;
-  guestCount: number;
-  totalBudgetMinor: number;
-  contingencyPercent: number;
-  theme: string;
-  dietaryNeeds: string[];
-  accessibilityNeeds: string[];
-  brief: string;
-}
+export const PlanRequestSchema = z.object({
+  title: z.string().trim().min(1, 'Title is required').max(150, 'Title cannot exceed 150 characters'),
+  type: z.enum(['wedding', 'birthday', 'community', 'corporate', 'anniversary', 'cultural', 'other']),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').default(() => new Date().toISOString().split('T')[0]),
+  location: z.string().trim().max(200, 'Location cannot exceed 200 characters').default(''),
+  guestCount: z.number().int().min(1, 'Guest count must be at least 1').max(50000, 'Guest count cannot exceed 50,000').default(100),
+  totalBudgetMinor: z.number().int().min(10000, 'Budget must be at least 100.00').max(100000000000, 'Budget exceeds allowable maximum'),
+  contingencyPercent: z.number().min(0).max(50).default(10),
+  theme: z.string().trim().max(200, 'Theme cannot exceed 200 characters').default(''),
+  dietaryNeeds: z.array(z.string().trim().max(100)).max(20).default([]),
+  accessibilityNeeds: z.array(z.string().trim().max(100)).max(20).default([]),
+  brief: z.string().trim().max(2000, 'Brief cannot exceed 2000 characters').default(''),
+});
+
+export type PlanGenerationInput = z.infer<typeof PlanRequestSchema>;
+
+export const AssistantRequestSchema = z.object({
+  message: z.string().trim().min(1, 'Message is required').max(1000, 'Message cannot exceed 1000 characters'),
+  eventState: z.record(z.string(), z.any()).optional(),
+});
+
+export type AssistantRequestInput = z.infer<typeof AssistantRequestSchema>;
+
+export const RippleRequestSchema = z.object({
+  currentEvent: z.object({
+    id: z.string(),
+    title: z.string().max(150),
+    type: z.string().optional(),
+    guestCount: z.number().int().min(1).max(50000),
+    venueCapacity: z.number().int().min(1).max(50000).optional(),
+    totalBudgetMinor: z.number().int().nonnegative(),
+    date: z.string(),
+  }).passthrough(),
+  changeRequest: z.object({
+    guestCount: z.number().int().min(1).max(50000).optional(),
+    totalBudgetMinor: z.number().int().nonnegative().optional(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD').optional(),
+    venueCapacity: z.number().int().min(1).max(50000).optional(),
+  }).refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field to change must be provided in changeRequest.',
+  }),
+});
+
+export type RippleRequestInput = z.infer<typeof RippleRequestSchema>;
 
 // Zod schema for validated AI response
 export const GeneratedPlanSchema = z.object({
@@ -104,6 +135,8 @@ export interface PlanGenerationResult {
   };
 }
 
+export const GEMINI_API_TIMEOUT_MS = 14000;
+
 /**
  * Robust caller to Google Generative Language REST API with tiered model fallbacks
  * and strict timeout to prevent serverless function gateway timeouts.
@@ -116,7 +149,7 @@ async function callGeminiApi(prompt: string, jsonMode: boolean = false): Promise
   // Attempt at most 2 healthy models to remain safely within Vercel's execution window
   for (const model of FALLBACK_MODELS.slice(0, 2)) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 14000);
+    const timeout = setTimeout(() => controller.abort(), GEMINI_API_TIMEOUT_MS);
 
     try {
       const response = await fetch(
@@ -141,6 +174,9 @@ async function callGeminiApi(prompt: string, jsonMode: boolean = false): Promise
         if (text) {
           return { text, modelUsed: model };
         }
+      } else if (response.status === 400) {
+        console.warn(`Gemini client request error (HTTP 400). Aborting model retries.`);
+        break; // Do not retry across models if request format or parameter is rejected
       } else if (response.status === 401 || response.status === 403) {
         console.warn(`Gemini authentication failure (HTTP ${response.status}). Aborting model retries.`);
         break; // Do not retry across models if the credential itself is invalid
@@ -154,9 +190,9 @@ async function callGeminiApi(prompt: string, jsonMode: boolean = false): Promise
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        console.warn(`Gemini model ${model} timed out after 9.5s. Trying next fallback...`);
+        console.warn(`Gemini model ${model} timed out after ${GEMINI_API_TIMEOUT_MS / 1000}s. Trying next fallback...`);
       } else {
-        console.warn(`Network error invoking Gemini model ${model}:`, err);
+        console.warn(`Network error invoking Gemini model ${model}:`, err?.message || err);
       }
     } finally {
       clearTimeout(timeout);

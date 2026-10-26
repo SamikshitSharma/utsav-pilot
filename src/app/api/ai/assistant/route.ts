@@ -1,24 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { EventState } from '@/types/event';
-import { getAiAssistantAdvice } from '@/lib/gemini';
+import { getAiAssistantAdvice, AssistantRequestSchema } from '@/lib/gemini';
+import { parseAndValidateJson, sanitizeErrorMessage } from '@/lib/api-guard';
 
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  // 1. Enforce payload size limit (HTTP 413) and validate request schema with bounds (HTTP 400)
+  const guard = await parseAndValidateJson(req, AssistantRequestSchema);
+  if (!guard.success) {
+    return guard.response;
+  }
+
   try {
-    const {
-      message,
-      eventState,
-    }: {
-      message: string;
-      eventState: EventState;
-    } = await req.json();
-
-    if (!message) {
-      return NextResponse.json({ error: 'Message query is required' }, { status: 400 });
-    }
-
-    const { reply, aiMetadata } = await getAiAssistantAdvice(message, eventState);
+    const { message, eventState } = guard.data;
+    const { reply, aiMetadata } = await getAiAssistantAdvice(message, eventState as any);
 
     return NextResponse.json({
       success: true,
@@ -26,7 +21,11 @@ export async function POST(req: NextRequest) {
       aiMetadata,
     });
   } catch (err: any) {
-    console.error('API /api/ai/assistant error:', err);
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
+    // 2. Safe error response: sanitize server logs and return safe generic error message
+    console.error('API /api/ai/assistant error:', sanitizeErrorMessage(err?.message || 'Internal server error'));
+    return NextResponse.json(
+      { error: 'An unexpected error occurred while retrieving co-pilot advice. Please try again.' },
+      { status: 500 }
+    );
   }
 }
