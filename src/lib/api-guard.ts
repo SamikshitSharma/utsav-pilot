@@ -31,10 +31,21 @@ export async function parseAndValidateJson<Output, Def extends z.ZodTypeDef = z.
   }
 
   // 2. Content-Length header verification (fast pre-check)
+  // Only accept strictly decimal non-negative integers — no leading/trailing whitespace,
+  // no suffix characters (e.g. "123abc"), no sign, no decimal point.
   const rawCl = req.headers.get('content-length');
   if (rawCl !== null) {
-    const cl = parseInt(rawCl, 10);
-    if (isNaN(cl) || cl < 0) {
+    if (!/^\d+$/.test(rawCl)) {
+      return {
+        success: false,
+        response: NextResponse.json(
+          { error: 'Malformed Content-Length header.' },
+          { status: 400 }
+        ),
+      };
+    }
+    const cl = Number(rawCl);
+    if (!Number.isSafeInteger(cl) || cl < 0) {
       return {
         success: false,
         response: NextResponse.json(

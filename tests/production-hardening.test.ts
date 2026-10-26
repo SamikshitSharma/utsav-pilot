@@ -283,6 +283,64 @@ describe('Production Hardening & Abuse Resistance Suite', () => {
       }
     });
 
+    it('rejects Content-Length with malformed suffix "123abc" (parseInt bypass) with HTTP 400', async () => {
+      // parseInt("123abc", 10) === 123, but our strict regex should reject this
+      const mockReq = new NextRequest('http://localhost:3000/api/ai/plan', {
+        method: 'POST',
+        headers: {
+          'content-length': '123abc',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ title: 'Test' }),
+      });
+
+      const result = await parseAndValidateJson(mockReq, PlanRequestSchema);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.response.status).toBe(400);
+        const data = await result.response.json();
+        expect(data.error).toContain('Malformed Content-Length');
+      }
+    });
+
+    it('rejects Content-Length with plus-prefixed value "+50" with HTTP 400', async () => {
+      const mockReq = new NextRequest('http://localhost:3000/api/ai/plan', {
+        method: 'POST',
+        headers: {
+          'content-length': '+50',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ title: 'Test' }),
+      });
+
+      const result = await parseAndValidateJson(mockReq, PlanRequestSchema);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.response.status).toBe(400);
+        const data = await result.response.json();
+        expect(data.error).toContain('Malformed Content-Length');
+      }
+    });
+
+    it('rejects Content-Length with floating-point value "50.5" with HTTP 400', async () => {
+      const mockReq = new NextRequest('http://localhost:3000/api/ai/plan', {
+        method: 'POST',
+        headers: {
+          'content-length': '50.5',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ title: 'Test' }),
+      });
+
+      const result = await parseAndValidateJson(mockReq, PlanRequestSchema);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.response.status).toBe(400);
+        const data = await result.response.json();
+        expect(data.error).toContain('Malformed Content-Length');
+      }
+    });
+
     it('rejects request with Content-Length header exceeding 64KB with HTTP 413', async () => {
       const mockReq = new NextRequest('http://localhost:3000/api/ai/plan', {
         method: 'POST',
