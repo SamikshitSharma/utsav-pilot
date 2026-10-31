@@ -33,9 +33,9 @@ Unlike a chatbot that only produces generic text, the **Event Ripple Engine** ev
    - These are application-level planning checks; they do not independently certify fire-code, building-code, or local regulatory compliance.
 3. **Automated Per-Guest Line Item Scaling**:
    - Line items flagged as `isScalableWithGuests` (such as catering, welcome drinks, or guest favors) can be recalculated using their configured per-person costs:
-     \`\`\`math
+     ```math
      \text{New Cost} = \text{Fixed Base} + (\text{Guest Count} \times \text{Cost Per Guest})
-     \`\`\`
+     ```
 4. **AI-Generated Trade-Off Alternatives**:
    - Gemini can propose event-specific alternatives, such as switching plated dining to buffet counters or simplifying decor. Suggestions are advisory and should be reviewed by the organizer.
 5. **Non-Destructive Patch Application**:
