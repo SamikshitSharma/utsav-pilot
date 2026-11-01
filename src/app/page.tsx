@@ -159,10 +159,7 @@ export default function Home() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Event Header Banner with Countdown and Constraints */}
-        <EventHeader
-          event={activeEvent}
-          onOpenRippleDrawer={() => setIsRippleDrawerOpen(true)}
-        />
+        <EventHeader event={activeEvent} />
 
         {/* Primary Navigation Tabs */}
         <div className="flex border-b border-slate-200 overflow-x-auto gap-2 text-xs sm:text-sm font-bold">
@@ -230,28 +227,31 @@ export default function Home() {
         {/* Tab Content Views */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {/* Signature Feature Banner */}
-            <div className="bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 text-white rounded-2xl p-6 shadow-festive-glow flex flex-col md:flex-row md:items-center justify-between gap-5">
+            {/* Signature Feature Architectural Explanation Banner (Non-Interactive) */}
+            <div className="bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 text-white rounded-2xl p-6 shadow-festive-glow flex flex-col lg:flex-row lg:items-center justify-between gap-5">
               <div className="space-y-1.5 max-w-2xl">
                 <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full text-xs font-bold tracking-wide uppercase">
                   <Waves className="w-3.5 h-3.5 animate-festive-pulse" />
-                  <span>Signature Differentiator</span>
+                  <span>Signature Architecture</span>
                 </div>
                 <h3 className="text-xl sm:text-2xl font-black">
-                  Experience the Event Ripple Engine
+                  The Event Ripple Engine
                 </h3>
                 <p className="text-xs sm:text-sm text-amber-100 leading-relaxed">
                   Test what happens when guest count scales from 250 to 320, budget shrinks, or deadlines compress. The engine detects physical capacity violations, mathematically reschedules scalable catering, and delivers AI-crafted trade-offs for 1-click approval.
                 </p>
               </div>
 
-              <button
-                onClick={() => setIsRippleDrawerOpen(true)}
-                className="inline-flex items-center justify-center gap-2 bg-white text-slate-900 hover:bg-amber-50 font-black text-sm py-3 px-6 rounded-xl shadow-lg transition-all hover:scale-105 active:scale-95 shrink-0"
-              >
-                <Zap className="w-4 h-4 text-amber-600" />
-                <span>Launch Ripple Simulation</span>
-              </button>
+              {/* Non-interactive navigation guide directing to primary navbar simulator */}
+              <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-3.5 text-xs text-amber-50 max-w-xs shrink-0 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-white">
+                  <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span>Primary Simulator Entry Point</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-amber-100">
+                  Open the <span className="font-semibold text-white">Event Ripple Engine</span> button in the top navigation bar at any time to run live constraint simulations.
+                </p>
+              </div>
             </div>
 
             {/* Quick Two-Column View: Budget Health & Upcoming Milestones */}

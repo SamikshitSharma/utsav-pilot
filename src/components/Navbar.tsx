@@ -102,16 +102,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Differentiator & Action Buttons */}
           <div className="flex items-center gap-2">
-            {/* Signature Feature: Ripple Engine Trigger */}
+            {/* Signature Feature: Ripple Engine Trigger (Primary Consolidated Entry Point) */}
             <button
               id="ripple-engine-trigger-btn"
               onClick={onOpenRippleDrawer}
+              title="Event Ripple Engine — Simulate guest, budget, and timeline constraint changes"
+              aria-label="Event Ripple Engine constraint simulation"
               className="relative inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white font-bold text-xs sm:text-sm py-2 px-3 sm:px-4 rounded-lg shadow-festive-glow transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
               <Waves className="w-4 h-4 animate-festive-pulse" />
-              <span>Ripple Engine</span>
-              <span className="hidden md:inline-flex bg-white/20 text-[10px] px-1.5 py-0.2 rounded-md font-mono">
-                Differentiator
+              <span className="hidden sm:inline">Event Ripple Engine</span>
+              <span className="sm:hidden">Ripple Engine</span>
+              <span className="hidden md:inline-flex bg-white/20 text-[10px] px-1.5 py-0.5 rounded-md font-mono">
+                Simulator
               </span>
             </button>
 

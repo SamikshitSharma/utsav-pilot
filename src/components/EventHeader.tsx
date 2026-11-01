@@ -18,10 +18,10 @@ import {
 
 interface EventHeaderProps {
   event: EventState;
-  onOpenRippleDrawer: () => void;
+  onOpenRippleDrawer?: () => void;
 }
 
-export const EventHeader: React.FC<EventHeaderProps> = ({ event, onOpenRippleDrawer }) => {
+export const EventHeader: React.FC<EventHeaderProps> = ({ event }) => {
   // Calculate days remaining
   const eventDate = new Date(event.date);
   const now = new Date();
@@ -157,15 +157,6 @@ export const EventHeader: React.FC<EventHeaderProps> = ({ event, onOpenRippleDra
               {formatCurrency(event.totalBudgetMinor, event.currency)}
             </div>
           </div>
-
-          {/* Quick Trigger to Ripple Simulation */}
-          <button
-            onClick={onOpenRippleDrawer}
-            className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-xl shadow-festive-glow transition-all"
-          >
-            <Waves className="w-4 h-4" />
-            <span>Simulate Constraint Changes</span>
-          </button>
         </div>
       </div>
     </div>

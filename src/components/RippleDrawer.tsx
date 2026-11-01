@@ -98,10 +98,27 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
         setEnrichedReport(data.report);
         if (data.aiMetadata) {
           setAiMetadata(data.aiMetadata);
+        } else {
+          setAiMetadata({
+            provider: 'simulation',
+            modelUsed: 'deterministic-rules-only',
+            isLive: false,
+          });
         }
+      } else {
+        setAiMetadata({
+          provider: 'simulation',
+          modelUsed: 'deterministic-fallback',
+          isLive: false,
+        });
       }
     } catch (err) {
       console.error('Failed to enrich ripple impact:', err);
+      setAiMetadata({
+        provider: 'simulation',
+        modelUsed: 'offline-fallback',
+        isLive: false,
+      });
     } finally {
       setIsAiLoading(false);
     }
@@ -114,6 +131,11 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
     setSimCapacity(event.venueCapacity);
     setEnrichedReport(null);
     setAiMetadata(null);
+  };
+
+  const handleDiscardAndClose = () => {
+    handleReset();
+    onClose();
   };
 
   const handleApplyChanges = () => {
@@ -146,8 +168,11 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
             </div>
           </div>
           <button
-            onClick={onClose}
-            className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+            id="ripple-drawer-close-btn"
+            onClick={handleDiscardAndClose}
+            title={hasChanges ? 'Discard changes and close drawer' : 'Close drawer'}
+            aria-label={hasChanges ? 'Discard changes and close drawer' : 'Close drawer'}
+            className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -163,8 +188,9 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
               </span>
               {hasChanges && (
                 <button
+                  id="ripple-reset-btn"
                   onClick={handleReset}
-                  className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors"
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" /> Reset to Original
                 </button>
@@ -176,12 +202,18 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
               <div className="flex justify-between items-center text-xs font-bold text-slate-800 mb-1.5">
                 <span className="flex items-center gap-1.5">
                   <Users className="w-4 h-4 text-indigo-600" /> Guest Count:
+                  {simGuestCount !== event.guestCount && (
+                    <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded border border-amber-300">
+                      Modified (was {event.guestCount})
+                    </span>
+                  )}
                 </span>
                 <span className="text-sm font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
                   {simGuestCount} Guests
                 </span>
               </div>
               <input
+                id="sim-guest-count-input"
                 type="range"
                 min="10"
                 max={Math.max(500, event.venueCapacity * 1.5)}
@@ -201,12 +233,18 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
               <div className="flex justify-between items-center text-xs font-bold text-slate-800 mb-1.5">
                 <span className="flex items-center gap-1.5">
                   <Wallet className="w-4 h-4 text-emerald-600" /> Total Budget (₹):
+                  {Math.round(simBudgetMajor * 100) !== event.totalBudgetMinor && (
+                    <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded border border-amber-300">
+                      Modified (was {formatCurrency(event.totalBudgetMinor, event.currency)})
+                    </span>
+                  )}
                 </span>
                 <span className="text-sm font-black text-emerald-700">
                   {formatCurrency(simBudgetMajor * 100, event.currency)}
                 </span>
               </div>
               <input
+                id="sim-budget-input"
                 type="number"
                 step="10000"
                 value={simBudgetMajor}
@@ -215,13 +253,21 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
               />
             </div>
 
-            {/* 3. Event Date Picker */}
+            {/* 3. Event Date Picker & Venue Capacity */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-rose-500" /> Event Date:
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-rose-500" /> Event Date:
+                  </span>
+                  {simDate !== event.date && (
+                    <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded border border-amber-300">
+                      Modified
+                    </span>
+                  )}
                 </label>
                 <input
+                  id="sim-date-input"
                   type="date"
                   value={simDate}
                   onChange={(e) => setSimDate(e.target.value)}
@@ -230,10 +276,16 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Venue Capacity:
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Venue Capacity:</span>
+                  {simCapacity !== event.venueCapacity && (
+                    <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded border border-amber-300">
+                      Modified (was {event.venueCapacity})
+                    </span>
+                  )}
                 </label>
                 <input
+                  id="sim-capacity-input"
                   type="number"
                   min="1"
                   value={simCapacity}
@@ -242,6 +294,30 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
                 />
               </div>
             </div>
+          </div>
+
+          {/* Guidance when no constraints have been adjusted yet */}
+          {!hasChanges && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-600 flex items-start gap-2.5">
+              <Zap className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold text-slate-800">No constraint changes simulated yet.</span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Adjust guest count, budget limit, event date, or venue capacity above to simulate physical capacity violations, scalable catering rebalancing, and deadline recalculations.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Section A: Deterministic Consequence Analysis */}
+          <div className="flex items-center justify-between border-b border-slate-200 pb-2 pt-1">
+            <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-800">
+              <ShieldCheck className="w-4 h-4 text-indigo-600" />
+              <span>Deterministic Impact Analysis</span>
+            </div>
+            <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">
+              Verified Calculations
+            </span>
           </div>
 
           {/* Active Conflicts and Warnings */}
@@ -364,30 +440,44 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
             </div>
           )}
 
-          {/* Actionable AI-Proposed Trade-Offs */}
+          {/* Actionable Trade-Off Recommendations */}
           {activeReport.aiTradeOffs.length > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-amber-500" /> Actionable AI Trade-Off Alternatives
-                </h4>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    {aiMetadata?.isLive
+                      ? 'AI-Generated Trade-Off Recommendations'
+                      : 'Trade-Off Recommendations'}
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    {aiMetadata?.isLive
+                      ? 'Generative trade-offs synthesized live by Google Gemini for your event parameters.'
+                      : aiMetadata && !aiMetadata.isLive
+                      ? 'Offline fallback simulation mode (Gemini offline).'
+                      : 'Rule-based suggestions. Click "Enrich with Gemini AI" for live contextual reasoning.'}
+                  </p>
+                </div>
                 {aiMetadata ? (
                   <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    id="ripple-ai-metadata-badge"
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
                       aiMetadata.isLive
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                        : 'bg-amber-50 text-amber-800 border-amber-300'
                     }`}
                   >
                     {aiMetadata.isLive
                       ? `✨ Live Gemini (${aiMetadata.modelUsed})`
-                      : 'Offline Simulation'}
+                      : `Offline Fallback (${aiMetadata.modelUsed})`}
                   </span>
                 ) : (
                   <button
+                    id="ripple-enrich-ai-btn"
                     onClick={handleEnrichWithAi}
                     disabled={isAiLoading || !hasChanges}
-                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200 transition-colors disabled:opacity-50 cursor-pointer"
+                    className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-200 transition-colors disabled:opacity-50 cursor-pointer shrink-0"
                   >
                     {isAiLoading ? (
                       <>
@@ -396,7 +486,7 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3 h-3 text-indigo-600" />
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
                         <span>Enrich with Gemini AI</span>
                       </>
                     )}
@@ -433,13 +523,15 @@ export const RippleDrawer: React.FC<RippleDrawerProps> = ({
         {/* Footer Actions */}
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
           <button
-            onClick={onClose}
-            className="px-4 py-2.5 border border-slate-300 text-slate-700 text-xs sm:text-sm font-semibold rounded-xl hover:bg-slate-100 transition-colors"
+            id="ripple-drawer-discard-close-btn"
+            onClick={handleDiscardAndClose}
+            className="px-4 py-2.5 border border-slate-300 text-slate-700 text-xs sm:text-sm font-semibold rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
           >
-            Cancel / Discard
+            {hasChanges ? 'Discard Changes' : 'Close'}
           </button>
 
           <button
+            id="ripple-drawer-accept-btn"
             onClick={handleApplyChanges}
             disabled={!hasChanges}
             className={`inline-flex items-center gap-2 text-xs sm:text-sm font-bold py-2.5 px-5 rounded-xl transition-all shadow-xs ${

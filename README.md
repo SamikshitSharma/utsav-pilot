@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
 [![Google Gemini](https://img.shields.io/badge/Google_Gemini-3.5_Flash_Lite-orange?style=for-the-badge&logo=google)](https://ai.google.dev/)
-[![Vitest](https://img.shields.io/badge/Tests-91%2F91_Passing-brightgreen?style=for-the-badge&logo=vitest)](https://vitest.dev/)
+[![Vitest](https://img.shields.io/badge/Tests-99%2F99_Passing-brightgreen?style=for-the-badge&logo=vitest)](https://vitest.dev/)
 
 ---
 
@@ -152,14 +152,15 @@ npm test
 The latest recorded verification for the audited release reported:
 
 ```
-Test Files  9 passed (9)
-     Tests  91 passed (91)
+Test Files  10 passed (10)
+     Tests  99 passed (99)
 ```
 
 Test files:
 - `tests/budget-math.test.ts` — integer minor-unit arithmetic.
 - `tests/ripple-engine.test.ts` — ripple propagation, date logic, and patches.
 - `tests/storage-ripple-persistence.test.ts` — storage lifecycle, active event tracking, and ripple persistence.
+- `tests/ripple-ux-and-interaction.test.ts` — UX entry point consolidation, cancellation semantics, deterministic vs Gemini distinction, and input invalidation.
 - `tests/import-export.test.ts` — import/export validation.
 - `tests/schema-validation.test.ts` — schema validation.
 - `tests/gemini-fault-tolerance.test.ts` — provider fault handling.
