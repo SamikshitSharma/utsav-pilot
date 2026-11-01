@@ -372,7 +372,10 @@ export function applyRipplePatch(
   current: EventState,
   patches: RippleImpactReport['pendingPatches']
 ): EventState {
-  const updated = { ...current };
+  const updated: EventState = {
+    ...current,
+    updatedAt: new Date().toISOString(),
+  };
 
   if (patches.guestCount !== undefined) {
     updated.guestCount = patches.guestCount;
@@ -387,21 +390,45 @@ export function applyRipplePatch(
     updated.venueCapacity = patches.venueCapacity;
   }
   if (patches.budgetItems) {
-    // Preserve any user-added items not in the patched list
+    // Preserve any existing user-added items while updating patched items
     const patchMap = new Map(patches.budgetItems.map((i) => [i.id, i]));
-    updated.budgetItems = (current.budgetItems || []).map((item) => {
+    const patchedIds = new Set<string>();
+    const updatedItems = (current.budgetItems || []).map((item) => {
       const patched = patchMap.get(item.id);
-      return patched ? { ...item, ...patched } : item;
+      if (patched) {
+        patchedIds.add(item.id);
+        return { ...item, ...patched };
+      }
+      return item;
     });
+    // Append any newly added patched items not previously in current
+    for (const pItem of patches.budgetItems) {
+      if (!patchedIds.has(pItem.id)) {
+        updatedItems.push(pItem);
+      }
+    }
+    updated.budgetItems = updatedItems;
   }
   if (patches.tasks) {
+    // Preserve any existing user-added tasks while updating patched tasks
     const taskMap = new Map(patches.tasks.map((t) => [t.id, t]));
-    updated.tasks = (current.tasks || []).map((task) => {
+    const patchedIds = new Set<string>();
+    const updatedTasks = (current.tasks || []).map((task) => {
       const patched = taskMap.get(task.id);
-      return patched ? { ...task, ...patched } : task;
+      if (patched) {
+        patchedIds.add(task.id);
+        return { ...task, ...patched };
+      }
+      return task;
     });
+    // Append any newly added patched tasks not previously in current
+    for (const pTask of patches.tasks) {
+      if (!patchedIds.has(pTask.id)) {
+        updatedTasks.push(pTask);
+      }
+    }
+    updated.tasks = updatedTasks;
   }
 
-  updated.updatedAt = new Date().toISOString();
   return updated;
 }

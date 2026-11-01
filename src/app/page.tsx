@@ -50,8 +50,10 @@ export default function Home() {
     const savedActiveId = loadActiveEventId();
     if (loaded.some((e) => e.id === savedActiveId)) {
       setActiveEventId(savedActiveId);
+      saveActiveEventId(savedActiveId);
     } else if (loaded.length > 0) {
       setActiveEventId(loaded[0].id);
+      saveActiveEventId(loaded[0].id);
     }
   }, []);
 
@@ -68,9 +70,19 @@ export default function Home() {
   };
 
   const handleUpdateActiveEvent = (updated: EventState) => {
-    const updatedEvents = events.map((ev) => (ev.id === updated.id ? updated : ev));
-    setEvents(updatedEvents);
-    saveEventsToStorage(updatedEvents);
+    setEvents((prevEvents) => {
+      const exists = prevEvents.some((ev) => ev.id === updated.id);
+      const updatedEvents = exists
+        ? prevEvents.map((ev) => (ev.id === updated.id ? updated : ev))
+        : [...prevEvents, updated];
+      const saved = saveEventsToStorage(updatedEvents);
+      if (!saved) {
+        showToast('⚠️ Storage warning: Browser storage is full or restricted. Changes might not persist on reload.');
+      }
+      return updatedEvents;
+    });
+    setActiveEventId(updated.id);
+    saveActiveEventId(updated.id);
   };
 
   const handleResetDemo = () => {
@@ -78,6 +90,7 @@ export default function Home() {
       const reset = resetStorageToDemo();
       setEvents(reset);
       setActiveEventId(reset[0].id);
+      saveActiveEventId(reset[0].id);
       showToast('Successfully restored pristine demonstration events!');
     }
   };
@@ -86,10 +99,15 @@ export default function Home() {
     newEvent: EventState,
     aiMetadata?: { provider: string; modelUsed: string; isLive: boolean }
   ) => {
-    const updatedEvents = [newEvent, ...events];
-    setEvents(updatedEvents);
+    setEvents((prevEvents) => {
+      const updatedEvents = [newEvent, ...prevEvents];
+      const saved = saveEventsToStorage(updatedEvents);
+      if (!saved) {
+        showToast('⚠️ Storage warning: Browser storage is full or restricted.');
+      }
+      return updatedEvents;
+    });
     setActiveEventId(newEvent.id);
-    saveEventsToStorage(updatedEvents);
     saveActiveEventId(newEvent.id);
     const sourceLabel = aiMetadata?.isLive
       ? `Live Google Gemini (${aiMetadata.modelUsed})`
@@ -98,10 +116,15 @@ export default function Home() {
   };
 
   const handleImportEvent = (importedEvent: EventState) => {
-    const updatedEvents = [importedEvent, ...events];
-    setEvents(updatedEvents);
+    setEvents((prevEvents) => {
+      const updatedEvents = [importedEvent, ...prevEvents];
+      const saved = saveEventsToStorage(updatedEvents);
+      if (!saved) {
+        showToast('⚠️ Storage warning: Browser storage is full or restricted.');
+      }
+      return updatedEvents;
+    });
     setActiveEventId(importedEvent.id);
-    saveEventsToStorage(updatedEvents);
     saveActiveEventId(importedEvent.id);
     showToast(`Successfully imported "${importedEvent.title}"!`);
   };
